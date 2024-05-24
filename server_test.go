@@ -1043,3 +1043,91 @@ func TestNewServerParamsWithNil(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, params)
 }
+
+func TestRoutesWithMultiGroupWithBasicAuth(t *testing.T) {
+	basicAuthMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			username, password, ok := c.Request().BasicAuth()
+			if !ok || username != "admin" || password != "admin" {
+				return c.String(http.StatusUnauthorized, "Unauthorized")
+			}
+			return next(c)
+		}
+	}
+
+	server, _ := NewServer()
+
+	r1 := NewRouters()
+	r1.SetPathFixed("/api")
+	r1.AddRouterFx("/test", Methods{
+		http.MethodGet: func(c Context) error {
+			return c.String(http.StatusOK, "test passed")
+		},
+	})
+
+	_ = server.RegisterRouters(V1, r1, basicAuthMiddleware)
+
+	r2 := NewRouters()
+	r2.SetPathFixed("/api2")
+	r2.AddRouterFx("/test", Methods{
+		http.MethodGet: func(c Context) error {
+			return c.String(http.StatusOK, "test passed")
+		},
+	})
+
+	_ = server.RegisterRouters(V1, r2)
+
+	e := server.GetEcho()
+
+	tests := []struct {
+		name         string
+		method       string
+		path         string
+		username     string
+		password     string
+		expectedCode int
+		expectedBody string
+	}{
+		{
+			name:         "Unauthenticated access to /v1/api/test",
+			method:       http.MethodGet,
+			path:         "/v1/api/test",
+			username:     "",
+			password:     "",
+			expectedCode: http.StatusUnauthorized,
+			expectedBody: "Unauthorized",
+		},
+		{
+			name:         "Authenticated access to /v1/api/test",
+			method:       http.MethodGet,
+			path:         "/v1/api/test",
+			username:     "admin",
+			password:     "admin",
+			expectedCode: http.StatusOK,
+			expectedBody: "test passed",
+		},
+		{
+			name:         "Authenticated access to /v1/api2/test",
+			method:       http.MethodGet,
+			path:         "/v1/api2/test",
+			username:     "",
+			password:     "",
+			expectedCode: http.StatusOK,
+			expectedBody: "test passed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			if tt.username != "" && tt.password != "" {
+				req.SetBasicAuth(tt.username, tt.password)
+			}
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.expectedCode, rec.Code)
+			assert.Equal(t, tt.expectedBody, rec.Body.String())
+		})
+	}
+}
