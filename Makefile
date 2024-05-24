@@ -1,0 +1,29 @@
+.PHONY: help
+
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+.DEFAULT_GOAL := help
+
+.PHONY: gen
+gen: ## GEN - Generate mocks and interfaces
+	# generate mocks...
+	@go generate ./...
+
+.PHONY: install
+install: ## INSTALL - Install dependencies for mock and interfaces
+	# install ifacemaker...
+	go install github.com/vburenin/ifacemaker@latest
+	# install mockgen...
+	go install go.uber.org/mock/mockgen@latest
+	# install govulncheck...
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+
+.PHONY: vuln
+vuln: ## VULN - Check for vulnerabilities
+	# check for vulnerabilities...
+	@govulncheck -show verbose ./...
+
+.PHONY: test
+test: ## TEST - Run tests
+	# run tests...
+	@go test -v ./...

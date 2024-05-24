@@ -1,3 +1,6 @@
+//go:generate ifacemaker -f $GOFILE -s Server -i ServerRepo -p server -o repository.go
+//go:generate mockgen -source=repository.go -package=${GOPACKAGE} -destination=${GOPACKAGE}_mock.go
+
 package server
 
 import (
@@ -11,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
+// Kind represents the type of router group
 type Kind int
 
 const (
@@ -35,19 +39,24 @@ func (k Kind) String() string {
 	}[k]
 }
 
+// RegisterRouter defines a single router with a path and methods
 type RegisterRouter struct {
 	Path    string
 	Methods map[string]HandlerFunc
 }
+
+// RegisterRouters holds multiple routers with a fixed path prefix
 type RegisterRouters struct {
 	PathFixed string
 	Routers   []RegisterRouter
 }
 
+// NewRouters creates a new instance of RegisterRouters
 func NewRouters() *RegisterRouters {
 	return &RegisterRouters{}
 }
 
+// AddRouter adds a new router to the list
 func (r *RegisterRouters) AddRouter(path string, methods map[string]HandlerFunc) {
 	r.Routers = append(r.Routers, RegisterRouter{
 		Path:    path,
@@ -55,6 +64,7 @@ func (r *RegisterRouters) AddRouter(path string, methods map[string]HandlerFunc)
 	})
 }
 
+// AddRouterFx adds a new router with a fixed path prefix
 func (r *RegisterRouters) AddRouterFx(params string, methods map[string]HandlerFunc) {
 	path := strings.TrimSpace(params)
 	if len(path) > 0 {
@@ -69,10 +79,12 @@ func (r *RegisterRouters) AddRouterFx(params string, methods map[string]HandlerF
 	})
 }
 
-func (r *RegisterRouters) GeAlltRouters() []RegisterRouter {
+// GetAllRouters returns all registered routers
+func (r *RegisterRouters) GetAllRouters() []RegisterRouter {
 	return r.Routers
 }
 
+// GetRouters returns routers matching the specified path
 func (r *RegisterRouters) GetRouters(path string) []RegisterRouter {
 	var routers []RegisterRouter
 	for _, router := range r.Routers {
@@ -83,32 +95,29 @@ func (r *RegisterRouters) GetRouters(path string) []RegisterRouter {
 	return routers
 }
 
+// GetRoutersFx returns routers containing the fixed path prefix
 func (r *RegisterRouters) GetRoutersFx() []RegisterRouter {
 	var routers []RegisterRouter
-
 	for _, router := range r.Routers {
 		if strings.Contains(router.Path, r.PathFixed) {
 			routers = append(routers, router)
 		}
 	}
-
 	return routers
 }
 
+// SetPathFixed sets the fixed path prefix
 func (r *RegisterRouters) SetPathFixed(path string) {
 	r.PathFixed = path
 }
 
 type Methods map[string]HandlerFunc
-
 type HandlerFunc = echo.HandlerFunc
-
 type MiddlewareFunc = echo.MiddlewareFunc
-
 type Context = echo.Context
-
 type Route = echo.Route
 
+// Server represents the HTTP server
 type Server struct {
 	port   string
 	host   string
@@ -116,6 +125,7 @@ type Server struct {
 	params *ServerParams
 }
 
+// NewServer creates a new server instance with the given options
 func NewServer(opts ...Options) (*Server, error) {
 	params, err := newServerParams(opts...)
 	if err != nil {
@@ -137,87 +147,99 @@ func NewServer(opts ...Options) (*Server, error) {
 	}, nil
 }
 
+// NewContext creates a new Echo context
 func (s *Server) NewContext(req *http.Request, w http.ResponseWriter) Context {
 	return s.echo.NewContext(req, w)
 }
 
+// RegisterRouters registers multiple routers with the specified group and middlewares
 func (s *Server) RegisterRouters(group Kind, routers *RegisterRouters, middlewares ...MiddlewareFunc) error {
-	var grp *echo.Group
+	var grp any
 
 	switch group {
 	case ROOT:
+		grp = s.echo
 	case V1, V2, V3, DEV, API, DOCS:
 		grp = s.echo.Group(group.String())
+	default:
+		return fmt.Errorf("invalid group type")
 	}
 
-	if grp != nil {
-		return s.registerRouters(grp, routers, middlewares...)
-	}
-
-	return s.registerRouters(s.echo, routers, middlewares...)
+	return s.registerRouters(grp, routers, middlewares...)
 }
 
+// registerRouters registers routers to the given Echo group or instance
 func (s *Server) registerRouters(engine any, routers *RegisterRouters, middlewares ...MiddlewareFunc) error {
-	switch e := engine.(type) {
-	case *echo.Group:
-		for _, middleware := range middlewares {
+	for _, middleware := range middlewares {
+		switch e := engine.(type) {
+		case *echo.Group:
+			e.Use(middleware)
+		case *echo.Echo:
 			e.Use(middleware)
 		}
-		for _, methods := range routers.GeAlltRouters() {
-			for method, handler := range methods.Methods {
-				switch method {
-				case http.MethodGet:
-					e.GET(methods.Path, handler)
-				case http.MethodPost:
-					e.POST(methods.Path, handler)
-				case http.MethodPut:
-					e.PUT(methods.Path, handler)
-				case http.MethodDelete:
-					e.DELETE(methods.Path, handler)
-				case http.MethodPatch:
-					e.PATCH(methods.Path, handler)
-				case http.MethodHead:
-					e.HEAD(methods.Path, handler)
-				case http.MethodConnect:
-					e.CONNECT(methods.Path, handler)
-				case http.MethodOptions:
-					e.OPTIONS(methods.Path, handler)
-				case http.MethodTrace:
-					e.TRACE(methods.Path, handler)
-				}
+	}
+
+	for _, methods := range routers.GetAllRouters() {
+		for method, handler := range methods.Methods {
+			if err := s.registerMethod(engine, method, methods.Path, handler); err != nil {
+				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+// registerMethod registers a single method to the Echo instance
+func (s *Server) registerMethod(engine any, method, path string, handler echo.HandlerFunc) error {
+	switch e := engine.(type) {
+	case *echo.Group:
+		switch method {
+		case http.MethodGet:
+			e.GET(path, handler)
+		case http.MethodPost:
+			e.POST(path, handler)
+		case http.MethodPut:
+			e.PUT(path, handler)
+		case http.MethodDelete:
+			e.DELETE(path, handler)
+		case http.MethodPatch:
+			e.PATCH(path, handler)
+		case http.MethodHead:
+			e.HEAD(path, handler)
+		case http.MethodConnect:
+			e.CONNECT(path, handler)
+		case http.MethodOptions:
+			e.OPTIONS(path, handler)
+		case http.MethodTrace:
+			e.TRACE(path, handler)
+		default:
+			return fmt.Errorf("unsupported method: %s", method)
 		}
 
 	case *echo.Echo:
-		for _, middleware := range middlewares {
-			e.Use(middleware)
+		switch method {
+		case http.MethodGet:
+			e.GET(path, handler)
+		case http.MethodPost:
+			e.POST(path, handler)
+		case http.MethodPut:
+			e.PUT(path, handler)
+		case http.MethodDelete:
+			e.DELETE(path, handler)
+		case http.MethodPatch:
+			e.PATCH(path, handler)
+		case http.MethodHead:
+			e.HEAD(path, handler)
+		case http.MethodConnect:
+			e.CONNECT(path, handler)
+		case http.MethodOptions:
+			e.OPTIONS(path, handler)
+		case http.MethodTrace:
+			e.TRACE(path, handler)
+		default:
+			return fmt.Errorf("unsupported method: %s", method)
 		}
-
-		for _, methods := range routers.GeAlltRouters() {
-			for method, handler := range methods.Methods {
-				switch method {
-				case http.MethodGet:
-					e.GET(methods.Path, handler)
-				case http.MethodPost:
-					e.POST(methods.Path, handler)
-				case http.MethodPut:
-					e.PUT(methods.Path, handler)
-				case http.MethodDelete:
-					e.DELETE(methods.Path, handler)
-				case http.MethodPatch:
-					e.PATCH(methods.Path, handler)
-				case http.MethodHead:
-					e.HEAD(methods.Path, handler)
-				case http.MethodConnect:
-					e.CONNECT(methods.Path, handler)
-				case http.MethodOptions:
-					e.OPTIONS(methods.Path, handler)
-				case http.MethodTrace:
-					e.TRACE(methods.Path, handler)
-				}
-			}
-		}
-
 	default:
 		return fmt.Errorf("engine type not supported")
 	}
@@ -225,38 +247,41 @@ func (s *Server) registerRouters(engine any, routers *RegisterRouters, middlewar
 	return nil
 }
 
+// Start starts the server
 func (s *Server) Start() {
 	host := fmt.Sprintf("%s:%s", s.host, s.port)
-
 	if len(s.port) == 0 {
 		host = s.host
 	}
 
 	go func() {
-		if err := s.echo.Start(host); err != nil &&
-			err != http.ErrServerClosed {
+		if err := s.echo.Start(host); err != nil && err != http.ErrServerClosed {
 			s.echo.Logger.Fatal(err)
 		}
 	}()
-
 }
 
+// GetEcho returns the Echo instance
 func (s *Server) GetEcho() *echo.Echo {
 	return s.echo
 }
 
+// GetRouters returns all registered routes
 func (s *Server) GetRouters() []*Route {
 	return s.echo.Routes()
 }
 
+// Close closes the server
 func (s *Server) Close() error {
 	return s.echo.Close()
 }
 
+// Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.echo.Shutdown(ctx)
 }
 
+// GracefulShutdown shuts down the server with a timeout
 func (s *Server) GracefulShutdown() error {
 	return s.gracefulShutdown()
 }

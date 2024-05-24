@@ -1,10 +1,15 @@
 package server
 
+import (
+	"github.com/gookit/slog"
+)
+
 type Options func(s *ServerParams) error
 
 type ServerParams struct {
 	Port string
 	Host string
+	Slog *slog.SugaredLogger
 }
 
 func newServerParams(opts ...Options) (*ServerParams, error) {
@@ -32,6 +37,13 @@ func WithHost(host string) Options {
 	}
 }
 
+func WithSlog(slog *slog.SugaredLogger) Options {
+	return func(s *ServerParams) error {
+		s.Slog = slog
+		return nil
+	}
+}
+
 // getters and setters ------
 
 func (s *ServerParams) GetPort() string {
@@ -48,4 +60,12 @@ func (s *ServerParams) SetPort(port string) {
 
 func (s *ServerParams) SetHost(host string) {
 	s.Host = host
+}
+
+func (s *ServerParams) GetSlog() *slog.SugaredLogger {
+	return s.Slog
+}
+
+func (s *ServerParams) SetSlog(slog *slog.SugaredLogger) {
+	s.Slog = slog
 }

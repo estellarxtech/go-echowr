@@ -3,14 +3,23 @@ module github.com/thiagozs/go-echowr
 go 1.21.5
 
 require (
-	github.com/golang/mock v1.6.0
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/stretchr/testify v1.8.4
+	go.uber.org/mock v0.4.0
+)
+
+require (
+	github.com/gookit/color v1.5.4 // indirect
+	github.com/gookit/goutil v0.6.15 // indirect
+	github.com/gookit/gsr v0.1.0 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	golang.org/x/sync v0.5.0 // indirect
 )
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/gookit/slog v0.5.6
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
