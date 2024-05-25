@@ -1131,3 +1131,65 @@ func TestRoutesWithMultiGroupWithBasicAuth(t *testing.T) {
 		})
 	}
 }
+
+func TestWithUse(t *testing.T) {
+	server, _ := NewServer()
+	rr := NewRouters()
+	rr.AddRouter("/test", map[string]HandlerFunc{
+		http.MethodGet: func(c Context) error {
+			return c.String(http.StatusOK, "test passed")
+		},
+	})
+
+	middlewareA := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			return next(c)
+		}
+	}
+
+	_ = server.RegisterRouters(ROOT, rr)
+	server.Use(middlewareA)
+
+	e := server.GetEcho()
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "test passed", rec.Body.String())
+}
+
+func TestWithUses(t *testing.T) {
+	server, _ := NewServer()
+	rr := NewRouters()
+	rr.AddRouter("/test", map[string]HandlerFunc{
+		http.MethodGet: func(c Context) error {
+			return c.String(http.StatusOK, "test passed")
+		},
+	})
+
+	middlewareA := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			return next(c)
+		}
+	}
+
+	middlewareB := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			return next(c)
+		}
+	}
+
+	_ = server.RegisterRouters(ROOT, rr)
+	server.Uses(middlewareA, middlewareB)
+
+	e := server.GetEcho()
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "test passed", rec.Body.String())
+}

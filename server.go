@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 // Kind represents the type of router group
@@ -134,9 +133,10 @@ func NewServer(opts ...Options) (*Server, error) {
 
 	e := echo.New()
 
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORS())
+	// e.Use(middleware.Logger())
+	// e.Use(middleware.Recover())
+	// e.Use(middleware.CORS())
+
 	e.HideBanner = true
 
 	return &Server{
@@ -145,6 +145,14 @@ func NewServer(opts ...Options) (*Server, error) {
 		host:   params.GetHost(),
 		params: params,
 	}, nil
+}
+
+func (s *Server) Use(middleware MiddlewareFunc) {
+	s.echo.Use(middleware)
+}
+
+func (s *Server) Uses(middlewares ...MiddlewareFunc) {
+	s.echo.Use(middlewares...)
 }
 
 // NewContext creates a new Echo context
